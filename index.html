@@ -541,11 +541,73 @@ body{background:var(--black);color:var(--white);font-family:var(--ff-b);font-siz
 @keyframes bl { 0%,100% { opacity:1 } 50% { opacity:.3 } }
 @keyframes flt { 0%,100% { transform:translateY(0) } 50% { transform:translateY(-8px) } }
 
-/* ════════════════════════════════════
-   GLASSMORPHISM CAROUSEL SYSTEM
-════════════════════════════════════ */
+/* ══════════════════════════════════════════
+   VERTICAL CAROUSEL — mobile mode
+══════════════════════════════════════════ */
 
-/* --- Glass card base ---- */
+/* viewport clips vertically */
+.carousel-viewport {
+  overflow: hidden;
+  border-radius: 16px;
+  box-shadow: 0 0 80px rgba(181,25,43,.05);
+}
+
+/* track switches direction via JS (inline style) */
+.carousel-track {
+  display: flex;
+  gap: 16px;
+  transition: transform .52s cubic-bezier(.4,0,.2,1);
+  will-change: transform;
+  cursor: grab;
+}
+.carousel-track.dragging {
+  transition: none;
+  cursor: grabbing;
+}
+
+/* vertical dots — column on the right side */
+.dots-vertical {
+  flex-direction: column !important;
+  position: absolute;
+  right: -26px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-top: 0 !important;
+  gap: 7px !important;
+}
+.dots-vertical .car-dot {
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 3px !important;
+}
+.dots-vertical .car-dot.active {
+  width: 6px !important;
+  height: 20px !important;
+  border-radius: 3px !important;
+}
+
+/* carousel outer — needs position:relative for absolute dots */
+.carousel-outer {
+  position: relative;
+}
+
+/* vertical mode: hide horizontal arrows, show up/down hint via dots only */
+@media(max-width:767px){
+  .car-arrow { display: none; }          /* remove setas no mobile */
+
+  /* swipe hint label under each carousel */
+  .carousel-outer::after {
+    content: '↕ deslize';
+    display: block;
+    text-align: center;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: 40px;
+    opacity: .6;
+  }
+}
 .glass-card{
   position:relative;
   background:var(--glass-bg);
@@ -1356,22 +1418,33 @@ footer{background:var(--black);border-top:1px solid var(--line);padding:38px var
   /* ── EYEBROW ── */
   .eyebrow { font-size: 10px; letter-spacing: 2px; }
 
-  /* ── CARROSSÉIS — padding lateral para mostrar borda do próximo card ── */
-  #car-pillars,
-  #car-how,
-  #car-numbers,
-  #car-market,
-  #car-why {
-    padding: 0 10px;
+  /* ── CARROSSÉIS VERTICAIS — mobile ── */
+  /* viewport precisa de altura definida pelo JS */
+  .carousel-outer {
+    padding: 0 32px 0 0;  /* espaço à direita para os dots verticais */
   }
-  /* setas ficam dentro do padding */
-  .car-arrow.prev { left: -6px; }
-  .car-arrow.next { right: -6px; }
+  .carousel-viewport {
+    border-radius: 14px;
+    overflow: hidden;
+  }
 
-  /* dots maiores e mais tocáveis no mobile */
-  .car-dot { width: 7px; height: 7px; }
-  .car-dot.active { width: 24px; }
-  .car-dots { margin-top: 22px; gap: 7px; }
+  /* dots verticais maiores para toque */
+  .car-dots { margin-top: 28px; gap: 7px; }
+  .car-dot  { width: 7px; height: 7px; }
+  .car-dot.active { width: 7px; height: 22px; }
+
+  /* conteúdo dentro dos cards: centralizado */
+  .pc, .st, .ni, .md, .wc {
+    padding: 36px 24px;
+    align-items: center;
+    justify-content: center;
+  }
+  /* textos centralizados no modo vertical */
+  .pc-desc, .st-desc, .ni-desc, .md-lbl, .wc p {
+    text-align: center;
+  }
+  .pc-line { margin: 0 auto 18px; }
+  .st-n    { margin: 0 auto 20px; }
 
   /* ── PILLARS ── */
   .p-top { flex-direction: column; gap: 10px; margin-bottom: 36px; }
@@ -1389,22 +1462,7 @@ footer{background:var(--black);border-top:1px solid var(--line);padding:38px var
   .st-n { width: 48px; height: 48px; font-size: 1.2rem; margin-bottom: 18px; }
   .st-name { font-size: 1.1rem; }
 
-  /* ── NUMBERS — carrossel coluna única ── */
-  #numbers .carousel-outer { padding: 0; }
-  #numbers .carousel-viewport { border-radius: 12px; overflow: hidden; }
-  #numbers .carousel-track {
-    display: flex !important;
-    gap: 20px;
-    transform: translateX(0);
-    cursor: grab;
-  }
-  #numbers .carousel-track .ni {
-    border-radius: 12px;
-    padding: 32px 24px;
-    flex-shrink: 0;
-  }
-  #numbers .car-arrow { display: flex; }
-  #numbers .car-dots  { display: flex; }
+  /* ── NUMBERS ── */
   .ni-val { font-size: 2.2rem; }
 
   /* ── OFFER ── */
@@ -2199,193 +2257,253 @@ const urgBar = document.getElementById('urgBar');
 if(urgBar) urgIO.observe(urgBar.closest('.off-urgency') || urgBar);
 
 /* ════════════════════════════════════
-   CAROUSEL ENGINE
+   CAROUSEL ENGINE — DUAL MODE
+   Desktop : horizontal (translateX)
+   Mobile  : vertical  (translateY)
 ════════════════════════════════════ */
 
 const carousels = {};
 
-function getVisibleCount(id) {
-  const w = window.innerWidth;
-  if (w < 768) return 1;
-  if (w < 1024) return 2;
-  return 3;
-}
+function isMobile(){ return window.innerWidth < 768; }
 
-// per-carousel visible count
 function getMaxVisible(id){
   const w = window.innerWidth;
-  // always 1 card on mobile for every carousel
-  if (w < 768) return 1;
-  if (id === 'why') return 2;
-  if (id === 'numbers' || id === 'market') {
-    if (w < 1024) return 2;
-    return 3;
+  if(w < 768) return 1;                          // mobile: sempre 1
+  if(id === 'why') return 2;
+  if(id === 'numbers' || id === 'market'){
+    return w < 1024 ? 2 : 3;
   }
-  // pillars, how
-  if (w < 1024) return 2;
-  return 3;
+  return w < 1024 ? 2 : 3;                       // pillars, how
 }
 
-function initCarousel(id) {
+/* ── helpers ── */
+function cardSize(track, vis, gap){
+  const vp = track.parentElement;
+  if(isMobile()){
+    return vp.offsetHeight || 260;               // vertical: height of viewport
+  }
+  return (vp.offsetWidth - gap * (vis - 1)) / vis;
+}
+
+function applyTransform(track, idx, cardSz, gap, animate){
+  const offset = idx * (cardSz + gap);
+  track.style.transition = animate
+    ? 'transform .52s cubic-bezier(.4,0,.2,1)'
+    : 'none';
+  if(isMobile()){
+    track.style.transform = `translateY(-${offset}px)`;
+  } else {
+    track.style.transform = `translateX(-${offset}px)`;
+  }
+}
+
+/* ── init ── */
+function initCarousel(id){
   const track  = document.getElementById('track-' + id);
   const dotsEl = document.getElementById('dots-' + id);
-  if (!track) return;
+  if(!track) return;
 
-  const items   = Array.from(track.children);
-  const total   = items.length;
+  const items = Array.from(track.children);
+  const total = items.length;
+  const gap   = 16;
 
-  const state = { cur: 0, total, id, dragging: false, startX: 0, startOffset: 0 };
+  const state = {
+    cur: 0, total, id,
+    dragging: false,
+    startX: 0, startY: 0,
+    startOffset: 0,
+    vertical: isMobile()
+  };
   carousels[id] = state;
 
-  function visible(){ return getMaxVisible(id); }
+  function vis(){ return getMaxVisible(id); }
+  function maxIdx(){ return Math.max(0, total - vis()); }
 
-  function cardWidth(){
-    const gap = 20;
-    const vp  = track.parentElement; // .carousel-viewport
-    const vis = visible();
-    return (vp.offsetWidth - gap * (vis - 1)) / vis;
+  /* set card dimensions */
+  function layout(){
+    state.vertical = isMobile();
+    const vp = track.parentElement;
+    if(state.vertical){
+      /* vertical: fix track & card heights */
+      const ch = Math.round(vp.offsetWidth * 0.82); // card height ≈ 82% of width (portrait feel)
+      track.style.flexDirection = 'column';
+      track.style.width         = '100%';
+      vp.style.height           = ch + 'px';
+      items.forEach(c => {
+        c.style.width     = '100%';
+        c.style.minWidth  = '100%';
+        c.style.height    = ch + 'px';
+        c.style.minHeight = ch + 'px';
+        c.style.flexShrink = '0';
+        c.style.display   = 'flex';
+        c.style.flexDirection = 'column';
+        c.style.justifyContent = 'center';
+        c.style.alignItems     = 'center';
+        c.style.textAlign      = 'center';
+      });
+    } else {
+      /* horizontal: restore */
+      const cw = (vp.offsetWidth - gap * (vis() - 1)) / vis();
+      track.style.flexDirection = 'row';
+      track.style.width         = '';
+      vp.style.height           = '';
+      items.forEach(c => {
+        c.style.width         = cw + 'px';
+        c.style.minWidth      = cw + 'px';
+        c.style.height        = '';
+        c.style.minHeight     = '';
+        c.style.display       = '';
+        c.style.flexDirection = '';
+        c.style.justifyContent= '';
+        c.style.alignItems    = '';
+        c.style.textAlign     = '';
+      });
+    }
   }
-
-  function setCardWidths(){
-    const cw = cardWidth();
-    items.forEach(c => {
-      c.style.width     = cw + 'px';
-      c.style.minWidth  = cw + 'px';
-      c.style.flexShrink = '0';
-    });
-  }
-
-  function maxIndex(){ return Math.max(0, total - visible()); }
 
   function goTo(idx, animate = true){
-    state.cur = Math.max(0, Math.min(idx, maxIndex()));
-    const gap  = 20;
-    const cw   = cardWidth();
-    const offset = state.cur * (cw + gap);
-    if (!animate) track.style.transition = 'none';
-    else          track.style.transition = 'transform .55s cubic-bezier(.4,0,.2,1)';
-    track.style.transform = `translateX(-${offset}px)`;
+    state.cur = Math.max(0, Math.min(idx, maxIdx()));
+    const sz  = state.vertical
+      ? parseInt(track.parentElement.style.height) || 260
+      : (track.parentElement.offsetWidth - gap * (vis()-1)) / vis();
+    applyTransform(track, state.cur, sz, gap, animate);
     updateDots();
     updateArrows();
   }
 
-  // dots
+  /* dots */
   function buildDots(){
     dotsEl.innerHTML = '';
-    const count = maxIndex() + 1;
-    for (let i = 0; i < count; i++){
+    const count = maxIdx() + 1;
+    for(let i = 0; i < count; i++){
       const d = document.createElement('button');
       d.className = 'car-dot' + (i === 0 ? ' active' : '');
       d.setAttribute('aria-label', 'Slide ' + (i+1));
       d.addEventListener('click', () => goTo(i));
       dotsEl.appendChild(d);
     }
+    /* vertical mode: dots container becomes a column on the side */
+    if(state.vertical){
+      dotsEl.classList.add('dots-vertical');
+    } else {
+      dotsEl.classList.remove('dots-vertical');
+    }
   }
-
   function updateDots(){
-    const ds = dotsEl.querySelectorAll('.car-dot');
-    ds.forEach((d,i) => d.classList.toggle('active', i === state.cur));
+    dotsEl.querySelectorAll('.car-dot')
+      .forEach((d,i) => d.classList.toggle('active', i === state.cur));
   }
-
   function updateArrows(){
-    const prev = document.querySelector(`#car-${id} .car-arrow.prev`);
-    const next = document.querySelector(`#car-${id} .car-arrow.next`);
-    if(prev) prev.disabled = state.cur === 0;
-    if(next) next.disabled = state.cur >= maxIndex();
+    const p = document.querySelector(`#car-${id} .car-arrow.prev`);
+    const n = document.querySelector(`#car-${id} .car-arrow.next`);
+    if(p) p.disabled = state.cur === 0;
+    if(n) n.disabled = state.cur >= maxIdx();
   }
 
-  // touch / drag
-  function onPointerDown(e){
-    state.dragging = true;
-    state.startX   = e.touches ? e.touches[0].clientX : e.clientX;
-    const mat  = new DOMMatrix(getComputedStyle(track).transform);
-    state.startOffset = mat.m41;
+  /* ── pointer / touch drag ── */
+  function onDown(e){
+    state.dragging  = true;
+    state.startX    = e.touches ? e.touches[0].clientX : e.clientX;
+    state.startY    = e.touches ? e.touches[0].clientY : e.clientY;
+    const mat = new DOMMatrix(getComputedStyle(track).transform);
+    state.startOffset = state.vertical ? mat.m42 : mat.m41;
     track.classList.add('dragging');
   }
-
-  function onPointerMove(e){
-    if (!state.dragging) return;
-    const x    = e.touches ? e.touches[0].clientX : e.clientX;
-    const diff = x - state.startX;
+  function onMove(e){
+    if(!state.dragging) return;
+    const cx   = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy   = e.touches ? e.touches[0].clientY : e.clientY;
+    const diff = state.vertical ? cy - state.startY : cx - state.startX;
     track.style.transition = 'none';
-    track.style.transform  = `translateX(${state.startOffset + diff}px)`;
+    if(state.vertical){
+      track.style.transform = `translateY(${state.startOffset + diff}px)`;
+    } else {
+      track.style.transform = `translateX(${state.startOffset + diff}px)`;
+    }
   }
-
-  function onPointerUp(e){
-    if (!state.dragging) return;
+  function onUp(e){
+    if(!state.dragging) return;
     state.dragging = false;
     track.classList.remove('dragging');
-    const x    = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
-    const diff = x - state.startX;
-    const threshold = cardWidth() * 0.25;
-    if (diff < -threshold) goTo(state.cur + 1);
-    else if (diff > threshold) goTo(state.cur - 1);
-    else goTo(state.cur);
+    const cx   = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+    const cy   = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+    const diff = state.vertical ? cy - state.startY : cx - state.startX;
+    const sz   = state.vertical
+      ? parseInt(track.parentElement.style.height) || 260
+      : (track.parentElement.offsetWidth - gap * (vis()-1)) / vis();
+    const threshold = sz * 0.22;
+    if(diff < -threshold)      goTo(state.cur + 1);
+    else if(diff > threshold)  goTo(state.cur - 1);
+    else                       goTo(state.cur);
   }
 
-  track.addEventListener('mousedown',  onPointerDown);
-  window.addEventListener('mousemove', onPointerMove);
-  window.addEventListener('mouseup',   onPointerUp);
-  track.addEventListener('touchstart', onPointerDown, {passive:true});
-  track.addEventListener('touchmove',  onPointerMove, {passive:true});
-  track.addEventListener('touchend',   onPointerUp);
+  track.addEventListener('mousedown',  onDown);
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup',   onUp);
+  track.addEventListener('touchstart', onDown, { passive: true });
+  track.addEventListener('touchmove',  onMove, { passive: true });
+  track.addEventListener('touchend',   onUp);
+  track.querySelectorAll('img,a').forEach(el =>
+    el.addEventListener('dragstart', e => e.preventDefault()));
 
-  // prevent link drag
-  track.querySelectorAll('img,a').forEach(el => el.addEventListener('dragstart', e => e.preventDefault()));
-
-  // auto-advance
+  /* auto-advance */
   let timer;
   function startAuto(){
     timer = setInterval(() => {
-      const next = state.cur >= maxIndex() ? 0 : state.cur + 1;
-      goTo(next);
-    }, 3800 + Math.random() * 800);
+      goTo(state.cur >= maxIdx() ? 0 : state.cur + 1);
+    }, 4000 + Math.random() * 800);
   }
   function stopAuto(){ clearInterval(timer); }
 
   const outer = document.getElementById('car-' + id);
-  if (outer){
+  if(outer){
     outer.addEventListener('mouseenter', stopAuto);
     outer.addEventListener('mouseleave', startAuto);
+    outer.addEventListener('touchstart',  stopAuto, { passive: true });
+    outer.addEventListener('touchend',    () => { stopAuto(); setTimeout(startAuto, 5000); }, { passive: true });
   }
 
-  // resize
+  /* resize: re-layout and re-center */
+  let resizeTimer;
   window.addEventListener('resize', () => {
-    setCardWidths();
-    buildDots();
-    goTo(Math.min(state.cur, maxIndex()), false);
-    setTimeout(() => {
-      track.style.transition = 'transform .55s cubic-bezier(.4,0,.2,1)';
-    }, 20);
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      layout();
+      buildDots();
+      goTo(Math.min(state.cur, maxIdx()), false);
+      setTimeout(() => {
+        track.style.transition = 'transform .52s cubic-bezier(.4,0,.2,1)';
+      }, 20);
+    }, 80);
   });
 
-  setCardWidths();
+  layout();
   buildDots();
   goTo(0, false);
   startAuto();
 }
 
+/* ── carMove (called by arrow buttons) ── */
 function carMove(id, dir){
   const s = carousels[id];
-  if (!s) return;
+  if(!s) return;
+  s.cur = Math.max(0, Math.min(s.cur + dir, s.total - getMaxVisible(id)));
   const track = document.getElementById('track-' + id);
-  const gap   = 20;
+  const gap   = 16;
   const vp    = track.parentElement;
   const vis   = getMaxVisible(id);
-  const cw    = (vp.offsetWidth - gap * (vis - 1)) / vis;
-  const maxI  = Math.max(0, s.total - vis);
-  s.cur = Math.max(0, Math.min(s.cur + dir, maxI));
-  const offset = s.cur * (cw + gap);
-  track.style.transition = 'transform .55s cubic-bezier(.4,0,.2,1)';
-  track.style.transform  = `translateX(-${offset}px)`;
-  // dots
-  const dotsEl = document.getElementById('dots-' + id);
-  dotsEl.querySelectorAll('.car-dot').forEach((d,i) => d.classList.toggle('active', i === s.cur));
-  // arrows
-  const prev = document.querySelector(`#car-${id} .car-arrow.prev`);
-  const next = document.querySelector(`#car-${id} .car-arrow.next`);
-  if(prev) prev.disabled = s.cur === 0;
-  if(next) next.disabled = s.cur >= maxI;
+  const sz    = s.vertical
+    ? parseInt(vp.style.height) || 260
+    : (vp.offsetWidth - gap * (vis - 1)) / vis;
+  applyTransform(track, s.cur, sz, gap, true);
+  document.getElementById('dots-' + id)
+    .querySelectorAll('.car-dot')
+    .forEach((d,i) => d.classList.toggle('active', i === s.cur));
+  const p = document.querySelector(`#car-${id} .car-arrow.prev`);
+  const n = document.querySelector(`#car-${id} .car-arrow.next`);
+  const maxI = s.total - vis;
+  if(p) p.disabled = s.cur === 0;
+  if(n) n.disabled = s.cur >= maxI;
 }
 
 /* ════════════════════════════════════
